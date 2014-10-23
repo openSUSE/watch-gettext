@@ -1,0 +1,1 @@
+If application calls fork(), new log file should be created, or log should use SHM for numbers.

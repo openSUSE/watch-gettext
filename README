@@ -1,0 +1,5 @@
+watch-gettext is a tool to watch origins of translation in applications.
+
+It writes log to wrap-gettext.log in the current directory.
+
+Usage: watch-gettext executable [arguments of the executable]

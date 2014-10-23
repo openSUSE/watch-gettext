@@ -1,0 +1,4 @@
+2014-10-21  Stanislav Brabec  <sbrabec@suse.cz>
+
+	* watch-gettext.c: New wrapper.
+
