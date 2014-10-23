@@ -1,5 +1,10 @@
 watch-gettext is a tool to watch origins of translation in applications.
 
-It writes log to wrap-gettext.log in the current directory.
+It writes log to watch-gettext.po in the current directory.
 
 Usage: watch-gettext executable [arguments of the executable]
+
+Note: You may experience strange warnings with this application. For example GTK+ applications complain:
+Whoever translated default:LTR did so wrongly.
+
+You can ignore this message. This is caused by mangling of translations with special meaning.

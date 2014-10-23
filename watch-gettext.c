@@ -20,16 +20,24 @@ or obtained by writing to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
-#include <dlwrap/dlwrap.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include <inttypes.h>
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <libintl.h>
 #include <execinfo.h>
+
 #include <glib.h>
+
+#include <dlwrap/dlwrap.h>
 
 #define int_category_decl		int
 #define	int_category_printf		"%s"
-
-/* FIXME: repeated gettext calls cause memory lags and requires better implementation */
 
 static void libinit(void) __attribute__((constructor));
 static void libexit(void) __attribute__((destructor));
@@ -38,16 +46,19 @@ static int refno = 0;
 static FILE *dlwrap_file;
 static GHashTable *msg_table;
 
-/* Operate with msgid as a pointer, not as a string. It can cause
- * duplicite entries, but not more as the number of ocurrences in the
- * source code. It is easy to convert to use string hashes. */
-
-void libinit(void) {
-	dlwrap_file = fopen ("watch-gettext.log", "w");
-	msg_table = g_hash_table_new (NULL, NULL);
+static void libinit(void) {
+	if (!(dlwrap_file = fopen ("watch-gettext.po", "wx")))
+	{
+		char *filename;
+		asprintf (&filename, "watch-gettext-%d.po", getpid ());
+		dlwrap_file = fopen (filename, "w");
+		free (filename);
+	}
+	fputs ("# This pseudo-po file was written by wrap-gettext\n", dlwrap_file);
+	msg_table = g_hash_table_new (g_str_hash, g_str_equal);
 }
 
-void libexit(void) {
+static void libexit(void) {
 	fclose (dlwrap_file);
 	g_hash_table_destroy (msg_table);
 }
@@ -56,37 +67,161 @@ void libexit(void) {
 /* Obtain a backtrace and print it to stdout. */
 #define STACK_LEVELS 3
 #define SKIP_STACK_TOP 3
-void
-print_trace (void)
+static void print_trace (void)
 {
-  void *array[STACK_LEVELS+SKIP_STACK_TOP];
-  size_t size;
-  char **strings;
-  size_t i;
-
-  size = backtrace (array, STACK_LEVELS+SKIP_STACK_TOP);
-  strings = backtrace_symbols (array, size);
-
-  for (i = SKIP_STACK_TOP; i < size; i++)
-     fprintf (dlwrap_file, "%s\n", strings[i]);
-
-  fprintf (dlwrap_file, "\n");
-  free (strings);
+	void *array[STACK_LEVELS+SKIP_STACK_TOP];
+	size_t size;
+	char **strings;
+	size_t i;
+	size = backtrace (array, STACK_LEVELS+SKIP_STACK_TOP);
+	strings = backtrace_symbols (array, size);
+	for (i = SKIP_STACK_TOP; i < size; i++)
+		fprintf (dlwrap_file, "# %s\n", strings[i]);
+	free (strings);
 }
 
-int log_gettext (const char *domainname, const char *msgid, const char * msgid_plural)
+typedef struct
+{
+	FILE *stream;
+	bool opened;
+	const char **current_ptr;
+	bool is_pending_buf;
+	const char *pending_buf;
+}
+msg_t;
+
+static void mopen (msg_t *msg)
+{
+	if (!msg->opened)
+	{
+		fputc ('"', msg->stream);
+		msg->opened = true;
+	}
+}
+static void mflush (msg_t *msg)
+{
+	if (msg->is_pending_buf)
+	{
+		mopen (msg);
+		fwrite ((const void *)(msg->pending_buf), sizeof (char), *msg->current_ptr - msg->pending_buf, msg->stream);
+		msg->is_pending_buf = false;
+		msg->pending_buf = *msg->current_ptr;
+	}
+}
+
+static void mclose (msg_t *msg)
+{
+	mflush (msg);
+	if (msg->opened)
+	{
+		fputs ("\"\n", msg->stream);
+		msg->opened = false;
+	}
+}
+
+static void xprint (msg_t *msg, char c)
+{
+	mflush (msg);
+	mopen (msg);
+	fputc ('\\', msg->stream);
+	fputc (c, msg->stream);
+	msg->pending_buf++;
+}
+
+static void print_esc (FILE *fp, const char *s, const char *msgtype)
+{
+	msg_t msg;
+
+	msg.stream = fp;
+	msg.opened = false;
+	msg.current_ptr = &s;
+	msg.pending_buf = s;
+	msg.is_pending_buf = false;
+
+	/* pretty printing: multiline => start with msgid "" */
+	if (strchr (s, '\n'))
+		fprintf (fp, "%s \"\"\n", msgtype);
+	else
+		fprintf (fp, "%s ", msgtype);
+
+//	fprintf (fp, "@@@@%s@@@@\n", s);
+	while (*s)
+	{
+		switch (*s)
+		{
+		case '\t':
+			xprint (&msg, 't');
+			break;
+		case '\n':
+			xprint (&msg, 'n');
+//		fprintf (fp, "=> opened=%d, current=%p/pending=%p, is_pending=%d\n", msg.opened, *msg.current_ptr, msg.pending_buf, msg.is_pending_buf);
+			mclose (&msg);
+			break;
+		case '\r':
+			xprint (&msg, 'r');
+			break;
+		case '\f':
+			xprint (&msg, 'f');
+			break;
+		case '\\':
+		case '"':
+			xprint (&msg, *s);
+			break;
+		default:
+			msg.is_pending_buf = true;
+			break;
+		}
+//		fprintf (fp, "=> opened=%d, current=%p/pending=%p, is_pending=%d\n", msg.opened, *msg.current_ptr, msg.pending_buf, msg.is_pending_buf);
+		s++;
+	}
+	mclose (&msg);
+}
+
+static void wrap_gettext (char **mod_msgstr, const char *func, const char *domainname, const char *msgid, const char * msgid_plural, const char * msgstr)
 {
 	int ref;
+	const char *pure_msgid = msgid, *pure_msgstr = msgstr, *ctx_ch;
+	char *ctxt = NULL;
+
+	if ((ctx_ch = strchr (msgid, '\004')))
+	{
+		ctxt = g_new (char, ctx_ch - msgid + 1);
+		strncpy (ctxt, msgid, ctx_ch - msgid);
+		pure_msgid = ctx_ch + 1;
+		/* FIXME: Verify msgid_plural with context! */
+		if ((ctx_ch = strchr (msgstr, '\004')))
+		{
+			pure_msgstr = ctx_ch + 1;
+		}
+	}
 
 	if (!(ref = GPOINTER_TO_INT(g_hash_table_lookup (msg_table, msgid))))
 	{
 		ref = ++refno;
 		g_hash_table_insert (msg_table, (gpointer)msgid, GINT_TO_POINTER (ref));
-		fprintf (dlwrap_file, "[%d] (%p) %s: %s\n", refno, msgid, (domainname ? domainname : textdomain (NULL)), msgid);
-		fflush (dlwrap_file);
+		fprintf (dlwrap_file, "\n"
+			 "#. [%d] %s()\n"
+			 "#: %s:%p\n",
+			 refno, func,
+			 (domainname ? domainname : textdomain (NULL)), msgid);
 		print_trace();
+
+		if (ctxt)
+			fprintf (dlwrap_file, "msgctxt \"%s\"\n", ctxt);
+		print_esc (dlwrap_file, pure_msgid, "msgid");
+		if (msgid_plural)
+		{
+			print_esc (dlwrap_file, msgid_plural, "msgid_plural");
+			/* FIXME: Fetch all plurals! */
+			print_esc (dlwrap_file, pure_msgstr, "msgstr[FIXME]");
+		}
+		else
+			print_esc (dlwrap_file, pure_msgstr, "msgstr");
+		fflush (dlwrap_file);
 	}
-	return ref;
+	asprintf (mod_msgstr, "[%d]%s", ref, pure_msgstr);
+
+	g_free (ctxt);
 }
 
 #undef dlwrap_macro_3_nonvoid
@@ -94,7 +229,7 @@ int log_gettext (const char *domainname, const char *msgid, const char * msgid_p
 	return_type##_decl return_code; \
 	return_type##_decl modreturn_code; \
 	return_code = dlwrap_orig_3_nonvoid(return_type, name, arg1_type, arg1, arg2_type, arg2, arg3_type, arg3); \
-	asprintf (&modreturn_code, "[%d]%s", log_gettext(arg1, arg2, NULL), return_code); \
+	wrap_gettext (&modreturn_code, #name, arg1, arg2, NULL, return_code); \
 	return modreturn_code;
 
 #undef dlwrap_macro_5_nonvoid
@@ -102,7 +237,7 @@ int log_gettext (const char *domainname, const char *msgid, const char * msgid_p
 	return_type##_decl return_code; \
 	return_type##_decl modreturn_code; \
 	return_code = dlwrap_orig_5_nonvoid(return_type, name, arg1_type, arg1, arg2_type, arg2, arg3_type, arg3, arg4_type, arg4, arg5_type, arg5); \
-	asprintf (&modreturn_code, "[%d]%s", log_gettext(arg1, arg2, arg3), return_code); \
+	wrap_gettext (&modreturn_code, #name, arg1, arg2, arg3, return_code); \
 	return modreturn_code;
 
 dlwrap_install_3 (char_pointer, dcgettext, constant_char_pointer, constant_char_pointer, int_category);

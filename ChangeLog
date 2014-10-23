@@ -1,3 +1,13 @@
+2014-10-23  Stanislav Brabec  <sbrabec@suse.cz>
+
+	* watch-gettext.c: Log files in pseudo-po format. Support for
+	plurals (partial) and context. Strings are unique and none are
+	lost.
+
+2014-10-22  Stanislav Brabec  <sbrabec@suse.cz>
+
+	* watch-gettext.c: Support for backtrace.
+
 2014-10-21  Stanislav Brabec  <sbrabec@suse.cz>
 
 	* watch-gettext.c: New wrapper.
