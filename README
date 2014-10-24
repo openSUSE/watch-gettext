@@ -1,6 +1,9 @@
 watch-gettext is a tool to watch origins of translation in applications.
 
-It writes log to watch-gettext.po in the current directory.
+It writes log to watch-gettext-{program_name}.po. If it exists, it writes
+watch-gettext-{program_name}-{pid}.po.
+
+Unless WATCH_GETTEXT_DIR is defined, it writes to the current directory.
 
 Usage: watch-gettext executable [arguments of the executable]
 

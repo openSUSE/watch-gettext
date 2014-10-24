@@ -1,6 +1,10 @@
-Make the wrapper working correctly with non-empty LD_PRELOAD.
-
 To make a valid po file, messages with plurals should fetch all plurals.
 It is not an easy task.
 
 Implement support for exceptions: Translations that should not be mangled.
+
+It would be safer to escape msgctxt.
+
+Implement safety checks to prevent failures.
+
+Make it thread safe.

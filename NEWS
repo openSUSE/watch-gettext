@@ -1,3 +1,8 @@
+Version 0.3
+
+Log file name change. See README.
+Fixed msgctxt.
+
 Version 0.2
 
 * Log files in pseudo-po format.

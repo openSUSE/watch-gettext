@@ -25,12 +25,14 @@ or obtained by writing to the Free Software Foundation, Inc.,
 #include <string.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include <libintl.h>
 #include <execinfo.h>
+#include <time.h>
 
 #include <glib.h>
 
@@ -46,19 +48,49 @@ static int refno = 0;
 static FILE *dlwrap_file;
 static GHashTable *msg_table;
 
-static void libinit(void) {
-	if (!(dlwrap_file = fopen ("watch-gettext.po", "wx")))
+static void libinit(void)
+{
+	char *watch_gettext_dir = NULL, *filename, *fullname;
+	time_t current_time;
+	struct tm *time_tm;
+
+	watch_gettext_dir = getenv ("WATCH_GETTEXT_DIR");
+
+	asprintf (&filename, "watch-gettext-%s.po", program_invocation_short_name);
+	if (watch_gettext_dir)
 	{
-		char *filename;
-		asprintf (&filename, "watch-gettext-%d.po", getpid ());
-		dlwrap_file = fopen (filename, "w");
-		free (filename);
+		fullname = g_build_filename (watch_gettext_dir, filename, NULL);
+		g_free (filename);
 	}
-	fputs ("# This pseudo-po file was written by wrap-gettext\n", dlwrap_file);
+	else
+		fullname = filename;
+
+	if (!(dlwrap_file = fopen (fullname, "wx")))
+	{
+		g_free (fullname);
+		asprintf (&filename, "watch-gettext-%s-%d.po", program_invocation_short_name, getpid ());
+		if (watch_gettext_dir)
+		{
+			fullname = g_build_filename (watch_gettext_dir, filename, NULL);
+			free (filename);
+		}
+		else
+			fullname = filename;
+	}
+
+	dlwrap_file = fopen (fullname, "w");
+	g_free (fullname);
+
+	time (&current_time);
+	time_tm = localtime (&current_time);
+	fprintf (dlwrap_file, "# wrap-gettext pseudo-po file\n# generated: %s",
+		 asctime(time_tm));
+
 	msg_table = g_hash_table_new (g_str_hash, g_str_equal);
 }
 
-static void libexit(void) {
+static void libexit(void)
+{
 	fclose (dlwrap_file);
 	g_hash_table_destroy (msg_table);
 }
@@ -187,6 +219,7 @@ static void wrap_gettext (char **mod_msgstr, const char *func, const char *domai
 	{
 		ctxt = g_new (char, ctx_ch - msgid + 1);
 		strncpy (ctxt, msgid, ctx_ch - msgid);
+		ctxt[ctx_ch - msgid] = (char)0;
 		pure_msgid = ctx_ch + 1;
 		/* FIXME: Verify msgid_plural with context! */
 		if ((ctx_ch = strchr (msgstr, '\004')))

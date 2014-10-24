@@ -6,7 +6,7 @@ bin_SCRIPTS = \
 
 $(bin_SCRIPTS): Makefile
 	for SCRIPT in $(bin_SCRIPTS) ; do \
-		echo -e "#!/bin/sh\nrm -f watch-gettext.po\nLD_PRELOAD=$(pkglibdir)/$$SCRIPT.so \"\$$@\"" >$$SCRIPT ; \
+		echo -e "#!/bin/sh\nif test -z \"\$$LD_PRELOAD\" ; then\n\tLD_PRELOAD=\"$(pkglibdir)/$$SCRIPT.so\"\nelse\n\tLD_PRELOAD=\"\$$LD_PRELOAD:$(pkglibdir)/$$SCRIPT.so\"\nfi\n\"\$$@\"" >$$SCRIPT ; \
 	done
 
 DISTCLEANFILES = $(bin_SCRIPTS)

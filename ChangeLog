@@ -1,5 +1,9 @@
 2014-10-23  Stanislav Brabec  <sbrabec@suse.cz>
 
+	* watch-gettext.c: Log files name change. Fix msgctxt.
+
+2014-10-23  Stanislav Brabec  <sbrabec@suse.cz>
+
 	* watch-gettext.c: Log files in pseudo-po format. Support for
 	plurals (partial) and context. Strings are unique and none are
 	lost.
