@@ -1,4 +1,8 @@
-2014-10-23  Stanislav Brabec  <sbrabec@suse.cz>
+2014-10-27  Stanislav Brabec  <sbrabec@suse.cz>
+
+	* Makefile.am: Fix watch-gettext wrapper.
+
+2014-10-24  Stanislav Brabec  <sbrabec@suse.cz>
 
 	* watch-gettext.c: Log files name change. Fix msgctxt.
 

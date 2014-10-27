@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([watch-gettext], [0.3], [Stanislav Brabec <sbrabec@suse.cz>])
+AC_INIT([watch-gettext], [0.3.1], [Stanislav Brabec <sbrabec@suse.cz>])
 AC_CONFIG_SRCDIR([watch-gettext.c])
 AC_CONFIG_MACRO_DIR([m4])
 AM_DISABLE_STATIC
